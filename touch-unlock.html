@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+
+<head lang="en">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no" />
+    <title>canvas实现设置、验证九宫格手势密码</title>
+    <style type="text/css">
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #f0f0f2;
+        }
+
+        .top-bar {
+            height: 40px;
+            width: 100%;
+            font-size: 20px;
+            line-height: 40px;
+            text-align: center;
+            background-color: #f8f8f8;
+            border-bottom: 1px solid #bcbcbc;
+        }
+
+        #Msg {
+            font-size: 18px;
+            text-align: center;
+        }
+
+        .radio-group {
+            font-size: 20px;
+            margin: 10% 60px 0 60px;
+        }
+    </style>
+
+</head>
+
+<body>
+    <div class="top-bar">手势密码</div>
+    <canvas id="myCanvas"></canvas>
+    <div id="Msg">请选择设置密码 / 验证密码</div>
+    <div class="radio-group">
+        <div>
+            <input type="radio" value="1" name="radio" id="setPwd" onclick="radioChange()" />
+            <label for="setPwd">设置密码</label>
+        </div>
+        <br/>
+        <div>
+            <input type="radio" value="2" name="radio" id="verifyPwd" onclick="radioChange()" />
+            <label for="verifyPwd">验证密码</label>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        var R = 25, //圆的半径
+            CanvasWidth = 400,
+            CanvasHeight = 280,
+            OffsetX = 60,
+            OffsetY = 30;
+        var PointsLocation = [];
+
+        window.onload = function() {
+            var canva = document.getElementById("myCanvas");
+            CanvasWidth = document.body.offsetWidth;
+            canva.width = CanvasWidth;
+            canva.height = CanvasHeight;
+            var cxt = canva.getContext("2d");
+
+            // X轴两圆外距离 =（可视宽度 - 左右两边偏移量 - 一排三个圆的直径）/ 2
+            var X = (CanvasWidth - 2 * OffsetX - R * 2 * 3) / 2;
+            var Y = (CanvasHeight - 2 * OffsetY - R * 2 * 3) / 2;
+            PointsLocation = caculateNineCenterLocation(X, Y);
+
+            draw(cxt, PointsLocation, [], null);
+            initTouchEvent(canva, cxt);
+        }
+
+        function caculateNineCenterLocation(diffX, diffY) {
+            var Re = [];
+            for (var row = 0; row < 3; row++) {
+                for (var col = 0; col < 3; col++) {
+                    var Point = { //圆心
+                        X: (OffsetX + col * diffX + (col * 2 + 1) * R),
+                        Y: (OffsetY + row * diffY + (row * 2 + 1) * R)
+                    };
+                    Re.push(Point);
+                }
+            }
+            return Re;
+        }
+
+        function initTouchEvent(_canva, cxt) {
+            var LinePoint = []; //绘制的密码
+
+            _canva.addEventListener("touchstart", function(e) {
+                isPointTouched(e.touches[0], LinePoint);
+            }, false);
+            _canva.addEventListener("touchmove", function(e) {
+                e.preventDefault(); //阻止滚动(防止一些移动设备有缺省的touchmove行为 比如iOS overscroll)
+                var touches = e.touches[0];
+                isPointTouched(touches, LinePoint);
+                cxt.clearRect(0, 0, CanvasWidth, CanvasHeight);
+                draw(cxt, PointsLocation, LinePoint, {
+                    X: touches.pageX,
+                    Y: touches.pageY
+                });
+            }, false);
+            _canva.addEventListener("touchend", function(e) {
+                //touch结束点不一定在圆点 这样会存在多余线条 所以需要再重绘一次
+                cxt.clearRect(0, 0, CanvasWidth, CanvasHeight);
+                draw(cxt, PointsLocation, LinePoint, null);
+
+                if (LinePoint.length < 5) {
+                    document.getElementById('Msg').innerHTML = '密码太短，至少需要5个点';
+                } else { //长度大于等于5
+
+                    var obj = document.getElementsByName('radio');
+                    if (obj[0].checked == true) { //设置密码
+                        setPassword(LinePoint);
+                    } else if (obj[1].checked == true) { //验证密码
+                        verifyPassword(LinePoint);
+                    } else {
+                        document.getElementById('Msg').innerHTML = '请选择设置密码 / 验证密码 !!!';
+                    }
+
+                }
+                cxt.clearRect(0, 0, CanvasWidth, CanvasHeight);
+                draw(cxt, PointsLocation, [], null);
+                // alert("绘制结果是：" + LinePoint.join("->"));
+                LinePoint = [];
+            }, false);
+        }
+
+        function isPointTouched(touches, LinePoint) {
+            for (var i = 0; i < PointsLocation.length; i++) {
+                var currentPoint = PointsLocation[i];
+                // 实际触摸距离不一定正中圆心  所以需要算有效触摸范围
+                var xdiff = Math.abs(currentPoint.X - touches.pageX);
+                var ydiff = Math.abs(currentPoint.Y - touches.pageY + 41); // 加上由于topBar出现的高度差
+                var dir = Math.pow((xdiff * xdiff + ydiff * ydiff), 0.5);
+                if (dir < R) {
+                    if (LinePoint.indexOf(i) < 0) {
+                        LinePoint.push(i);
+                    }
+                    break;
+                }
+            }
+        }
+
+        function draw(_cxt, _PointsLocation, _LinePointArr, touchPoint) {
+            if (_LinePointArr.length > 0) { //touchmove 路径绘制
+                _cxt.beginPath();
+                for (var i = 0; i < _LinePointArr.length; i++) {
+                    var pointIndex = _LinePointArr[i];
+                    _cxt.lineTo(_PointsLocation[pointIndex].X, _PointsLocation[pointIndex].Y);
+                }
+                _cxt.lineWidth = 2;
+                _cxt.strokeStyle = "#d52b2b";
+                _cxt.stroke();
+                _cxt.closePath();
+                if (touchPoint != null) {
+                    var lastPointIndex = _LinePointArr[_LinePointArr.length - 1];
+                    var lastPoint = _PointsLocation[lastPointIndex];
+                    _cxt.beginPath();
+                    _cxt.moveTo(lastPoint.X, lastPoint.Y);
+                    _cxt.lineTo(touchPoint.X, touchPoint.Y);
+                    _cxt.stroke();
+                    _cxt.closePath();
+                }
+            }
+            for (var i = 0; i < _PointsLocation.length; i++) {
+                var Point = _PointsLocation[i];
+                _cxt.fillStyle = "#bbbbbb"; //先画灰色的圆 半径为R
+                _cxt.beginPath();
+                _cxt.arc(Point.X, Point.Y, R, 0, Math.PI * 2, true);
+                _cxt.closePath();
+                _cxt.fill();
+                _cxt.fillStyle = "#ffffff"; // 再画白色的圆 盖住灰色 半径R-1 做出边框效果
+                _cxt.beginPath();
+                _cxt.arc(Point.X, Point.Y, R - 1, 0, Math.PI * 2, true);
+                _cxt.closePath();
+                _cxt.fill();
+
+                if (_LinePointArr.indexOf(i) >= 0) { //被选中的画橘色的圆
+                    _cxt.fillStyle = "#ff6600";
+                    _cxt.beginPath();
+                    _cxt.arc(Point.X, Point.Y, R, 0, Math.PI * 2, true);
+                    _cxt.closePath();
+                    _cxt.fill();
+                }
+            }
+
+        }
+    </script>
+    <script type="text/javascript">
+        var isTwiceInput = false; // 是否第二次输入
+        var tempLinePoint = []; // 记录首次绘制的密码
+
+        function radioChange() {
+            isTwiceInput = false;
+            tempLinePoint = [];
+            document.getElementById('Msg').innerHTML = '请输入手势密码';
+        }
+
+        function setPassword(_LinePoint) {
+            if (!isTwiceInput) { //首次绘制
+                tempLinePoint = _LinePoint;
+                isTwiceInput = true;
+                document.getElementById('Msg').innerHTML = '请再次输入手势密码';
+            } else { //再次绘制
+                console.log("tempLinePoint=" + tempLinePoint.join('') + "     " + _LinePoint.join(''));
+                if (tempLinePoint.join('') === _LinePoint.join('')) {
+                    if (window.localStorage) {
+                        localStorage.setItem("password", _LinePoint.join(''));
+                    } else {
+                        Cookie.write("password", _LinePoint.join(''));
+                    }
+                    document.getElementById('Msg').innerHTML = '密码设置成功';
+                    isTwiceInput = false;
+                    tempLinePoint = [];
+                } else {
+                    document.getElementById('Msg').innerHTML = '两次输入的不一致';
+                }
+            }
+        }
+
+        function verifyPassword(_LinePoint) {
+            var password = window.localStorage ?
+                localStorage.getItem("password") :
+                Cookie.read("password");
+            if (password == null) {
+                document.getElementById('Msg').innerHTML = '您还没有设置密码！请您先设置密码';
+            } else {
+                if (password == _LinePoint.join('')) {
+                    document.getElementById('Msg').innerHTML = '密码正确！';
+                    isTwiceInput = false;
+                    tempLinePoint = [];
+                } else {
+                    document.getElementById('Msg').innerHTML = '输入的密码不正确';
+                }
+            }
+        }
+    </script>
+
+</body>
+
+</html>
